@@ -64,3 +64,118 @@ html, body {
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.25);
 }
+
+/* 시작·결과 화면 */
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 16px;
+}
+
+.overlay[hidden] {
+  display: none;
+}
+
+.card {
+  width: 100%;
+  max-width: 440px;
+  max-height: 100%;
+  overflow-y: auto;
+  background: #1b2433;
+  border: 1px solid #3d4450;
+  border-radius: 8px;
+  padding: 24px;
+  line-height: 1.6;
+  word-break: keep-all;
+}
+
+.card h1 {
+  font-size: 30px;
+  color: #f2b705;
+  margin-bottom: 12px;
+}
+
+.card h1.lose {
+  color: #ff7b72;
+}
+
+.card h1.win {
+  color: #7ee787;
+}
+
+.card h3 {
+  font-size: 15px;
+  color: #f2b705;
+  margin: 16px 0 4px;
+}
+
+.card ul {
+  padding-left: 20px;
+  margin: 12px 0;
+}
+
+.card .score {
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.card button {
+  display: block;
+  width: 100%;
+  margin-top: 20px;
+  padding: 14px;
+  font: inherit;
+  font-size: 18px;
+  font-weight: bold;
+  color: #11151c;
+  background: #f2b705;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* 휴대폰(세로 화면): 건물 패널을 화면 위쪽 얇은 막대로 바꾼다 */
+@media (max-width: 700px) and (orientation: portrait) {
+  #game {
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  #panel {
+    order: -1;
+    width: 100%;
+    height: auto;
+    padding: 8px;
+  }
+
+  #stage-title {
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+
+  #building {
+    flex: none;
+    flex-direction: row;
+    height: 28px;
+    border-bottom: none;
+  }
+
+  /* 공정 6칸이 한 줄에 들어가도록 칸 너비 고정 */
+  .floor {
+    flex: 0 0 calc((100% - 15px) / 6);
+    padding: 4px 2px;
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  #canvas {
+    max-width: 100%;
+    max-height: calc(100% - 90px);
+  }
+}

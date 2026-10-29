@@ -76,8 +76,11 @@ let gameOver = false;
 let allClear = false; // 모든 스테이지 완료
 let stageClearTimer = 0;
 let message = null; // { text, color, time }
+let mistakes = []; // 틀린 공정 기록 (게임 오버 화면 복습용)
+let running = false; // 시작·결과 화면이 떠 있으면 false
 
 function resetGame() {
+  mistakes = [];
   score = 0;
   helmets = START_HELMETS;
   stageIndex = 0;
@@ -91,6 +94,50 @@ function resetGame() {
   spawnTimer = 0;
   renderBuilding();
 }
+
+// 시작·결과 화면
+const overlayEl = document.getElementById('overlay');
+const cardEl = document.getElementById('card');
+const RESULT_DELAY = 1000; // 마지막 장면을 잠깐 보여준 뒤 결과 화면(ms)
+
+function startGame() {
+  overlayEl.hidden = true;
+  resetGame();
+  running = true;
+}
+
+function sequenceText(stage) {
+  return stage.steps.map((s) => s.name).join(' → ');
+}
+
+function showResult() {
+  running = false;
+  if (allClear) {
+    cardEl.innerHTML = `
+      <h1 class="win">모든 공정 완료!</h1>
+      <p class="score">점수 ${score} · 실수 ${mistakes.length}회</p>
+      ${STAGES.map((s, i) => `<h3>STAGE ${i + 1} · ${s.title}</h3><p>${sequenceText(s)}</p>`).join('')}
+      <button type="button">다시 하기 (Enter)</button>`;
+  } else {
+    const stage = STAGES[stageIndex];
+    const review = mistakes
+      .map((m) => `<li>'${m.shot}'은(는) ${m.order}번째 공정 — 그때 필요한 공정은 '${m.needed}'</li>`)
+      .join('');
+    cardEl.innerHTML = `
+      <h1 class="lose">게임 오버</h1>
+      <p class="score">점수 ${score}</p>
+      <h3>틀린 공정 복습</h3>
+      <ul>${review}</ul>
+      <h3>${stage.title} 올바른 순서</h3>
+      <p>${sequenceText(stage)}</p>
+      <button type="button">다시 하기 (Enter)</button>`;
+  }
+  overlayEl.hidden = false;
+}
+
+overlayEl.addEventListener('click', (e) => {
+  if (e.target.closest('button')) startGame();
+});
 
 function nextStage() {
   stageIndex++;
@@ -140,10 +187,31 @@ const keys = {};
 window.addEventListener('keydown', (e) => {
   keys[e.code] = true;
   if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
-  if (e.code === 'Enter' && (gameOver || allClear)) resetGame();
+  if (e.code === 'Enter' && !running) startGame();
 });
 window.addEventListener('keyup', (e) => {
   keys[e.code] = false;
+});
+
+// 터치·마우스: 누른 채 끌면 크레인이 따라오고 자동 발사
+let pointerDown = false;
+function movePlayerTo(clientX) {
+  const rect = canvas.getBoundingClientRect();
+  player.x = (clientX - rect.left) * (W / rect.width);
+}
+canvas.addEventListener('pointerdown', (e) => {
+  pointerDown = true;
+  canvas.setPointerCapture(e.pointerId);
+  movePlayerTo(e.clientX);
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (pointerDown) movePlayerTo(e.clientX);
+});
+canvas.addEventListener('pointerup', () => {
+  pointerDown = false;
+});
+canvas.addEventListener('pointercancel', () => {
+  pointerDown = false;
 });
 
 // 블록을 맞혔을 때 공정 순서 판정
@@ -160,19 +228,27 @@ function onHit(block) {
     // 마지막 공정까지 끝내면 스테이지 클리어
     if (stepIndex === steps.length) {
       blocks = [];
-      if (stageIndex === STAGES.length - 1) allClear = true;
-      else stageClearTimer = STAGE_CLEAR_TIME;
+      if (stageIndex === STAGES.length - 1) {
+        allClear = true;
+        setTimeout(showResult, RESULT_DELAY);
+      } else {
+        stageClearTimer = STAGE_CLEAR_TIME;
+      }
     }
   } else {
     helmets--;
     const order = steps.indexOf(block.step) + 1;
+    mistakes.push({ shot: block.step.name, order, needed: next.name });
     showMessage(`✖ 아직 '${next.name}' 공정이 끝나지 않았습니다! '${block.step.name}'은(는) ${order}번째 공정입니다.`, '#ff7b72');
-    if (helmets <= 0) gameOver = true;
+    if (helmets <= 0) {
+      gameOver = true;
+      setTimeout(showResult, RESULT_DELAY);
+    }
   }
 }
 
 function update(dt) {
-  if (gameOver || allClear) return;
+  if (!running || gameOver || allClear) return;
 
   if (message) {
     message.time -= dt;
@@ -193,7 +269,7 @@ function update(dt) {
 
   // 발사
   fireCooldown -= dt;
-  if (keys.Space && fireCooldown <= 0) {
+  if ((keys.Space || pointerDown) && fireCooldown <= 0) {
     bullets.push({ x: player.x, y: GROUND_Y - player.h - 30 });
     fireCooldown = FIRE_INTERVAL;
   }
@@ -324,21 +400,6 @@ function drawMessage() {
   lines.forEach((l, i) => ctx.fillText(l, W / 2, top + 8 + i * lineH));
 }
 
-function drawEndScreen(title, color) {
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
-  ctx.fillRect(0, 0, W, H);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = color;
-  ctx.font = `bold 40px ${FONT_FAMILY}`;
-  ctx.fillText(title, W / 2, H / 2 - 60);
-  ctx.fillStyle = '#ffffff';
-  ctx.font = `20px ${FONT_FAMILY}`;
-  ctx.fillText(`점수 ${score}`, W / 2, H / 2 - 10);
-  ctx.font = `16px ${FONT_FAMILY}`;
-  ctx.fillText('Enter 키를 누르면 다시 시작', W / 2, H / 2 + 25);
-}
-
 let lastTime = performance.now();
 function loop(now) {
   const dt = Math.min((now - lastTime) / 1000, 0.05); // 탭 전환 등으로 큰 시간 간격 방지
@@ -349,8 +410,6 @@ function loop(now) {
   drawBullets();
   drawPlayer();
   drawHud();
-  if (gameOver) drawEndScreen('게임 오버', '#ff7b72');
-  else if (allClear) drawEndScreen('모든 공정 완료!', '#7ee787');
   drawMessage();
   requestAnimationFrame(loop);
 }
