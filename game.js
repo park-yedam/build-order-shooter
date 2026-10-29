@@ -82,7 +82,15 @@ let message = null; // { text, color, time }
 let mistakes = []; // 틀린 공정 기록 (게임 오버 화면 복습용)
 let running = false; // 시작·결과 화면이 떠 있으면 false
 
+// 맞혔을 때 시각 효과
+const FLASH_TIME = 0.4; // 정답 블록 자리 초록 반짝임(초)
+const SHAKE_TIME = 0.35; // 오답 시 빨간 깜빡임과 흔들림(초)
+let flashes = []; // { x, y, w, h, time }
+let shakeTime = 0;
+
 function resetGame() {
+  flashes = [];
+  shakeTime = 0;
   mistakes = [];
   score = 0;
   helmets = START_HELMETS;
@@ -240,6 +248,7 @@ function onHit(block) {
     score += 100;
     stepIndex++;
     showMessage(`✔ ${next.name}: ${next.tip}`, '#7ee787', TIP_TIME);
+    flashes.push({ x: block.x, y: block.y, w: block.w, h: block.h, time: FLASH_TIME });
     // 끝낸 공정의 블록은 화면에서 치운다
     blocks = blocks.filter((k) => k.step !== next);
     renderBuilding();
@@ -255,6 +264,7 @@ function onHit(block) {
     }
   } else {
     helmets--;
+    shakeTime = SHAKE_TIME;
     const order = steps.indexOf(block.step) + 1;
     mistakes.push({ shot: block.step.name, order, needed: next.name });
     // 힌트를 숨긴 스테이지에서는 정답 공정 이름을 알려주지 않고 순서 번호만 알려준다
@@ -269,6 +279,11 @@ function onHit(block) {
 }
 
 function update(dt) {
+  // 시각 효과는 게임 오버 직후에도 끝까지 진행되도록 먼저 처리
+  for (const f of flashes) f.time -= dt;
+  flashes = flashes.filter((f) => f.time > 0);
+  shakeTime = Math.max(0, shakeTime - dt);
+
   if (!running || gameOver || allClear) return;
 
   if (message) {
@@ -362,6 +377,18 @@ function drawBlocks() {
   }
 }
 
+// 정답 블록 자리에서 초록색이 커지며 사라지는 반짝임
+function drawFlashes() {
+  ctx.fillStyle = '#7ee787';
+  for (const f of flashes) {
+    const p = 1 - f.time / FLASH_TIME; // 진행도 0 → 1
+    const grow = p * 14;
+    ctx.globalAlpha = 1 - p;
+    ctx.fillRect(f.x - grow, f.y - grow, f.w + grow * 2, f.h + grow * 2);
+  }
+  ctx.globalAlpha = 1;
+}
+
 function drawBullets() {
   ctx.fillStyle = '#c9d1d9';
   for (const b of bullets) ctx.fillRect(b.x - 2, b.y - 8, 4, 12);
@@ -425,17 +452,34 @@ function drawMessage() {
   lines.forEach((l, i) => ctx.fillText(l, W / 2, top + 8 + i * lineH));
 }
 
+function draw() {
+  ctx.save();
+  // 오답 직후에는 화면을 흔든다 (시간이 지날수록 약해짐)
+  if (shakeTime > 0) {
+    const s = 8 * (shakeTime / SHAKE_TIME);
+    ctx.translate((Math.random() * 2 - 1) * s, (Math.random() * 2 - 1) * s);
+  }
+  drawBackground();
+  drawMessage(); // 메시지가 블록을 가리지 않도록 블록보다 먼저 그린다
+  drawBlocks();
+  drawFlashes();
+  drawBullets();
+  drawPlayer();
+  drawHud();
+  ctx.restore();
+  // 오답 직후 빨간 깜빡임
+  if (shakeTime > 0) {
+    ctx.fillStyle = `rgba(255, 60, 60, ${0.35 * (shakeTime / SHAKE_TIME)})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
 let lastTime = performance.now();
 function loop(now) {
   const dt = Math.min((now - lastTime) / 1000, 0.05); // 탭 전환 등으로 큰 시간 간격 방지
   lastTime = now;
   update(dt);
-  drawBackground();
-  drawMessage(); // 메시지가 블록을 가리지 않도록 블록보다 먼저 그린다
-  drawBlocks();
-  drawBullets();
-  drawPlayer();
-  drawHud();
+  draw();
   requestAnimationFrame(loop);
 }
 resetGame();
