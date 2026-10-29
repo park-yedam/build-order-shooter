@@ -106,9 +106,23 @@ function resetGame() {
   renderBuilding();
 }
 
+// 최고 점수: 이 기기의 브라우저에 저장 (비공개 모드 등 저장소를 못 쓰면 0으로 시작)
+const BEST_KEY = 'build-order-shooter-best';
+let bestScore = 0;
+try {
+  bestScore = Number(localStorage.getItem(BEST_KEY)) || 0;
+} catch {}
+
+function saveBest() {
+  try {
+    localStorage.setItem(BEST_KEY, String(bestScore));
+  } catch {}
+}
+
 // 시작·결과 화면
 const overlayEl = document.getElementById('overlay');
 const cardEl = document.getElementById('card');
+if (bestScore > 0) document.getElementById('best-score').textContent = `최고 점수 ${bestScore}`;
 const RESULT_DELAY = 1000; // 마지막 장면을 잠깐 보여준 뒤 결과 화면(ms)
 
 function startGame() {
@@ -129,10 +143,17 @@ function stepsNote(stage) {
 
 function showResult() {
   running = false;
+  const isNewBest = score > bestScore;
+  if (isNewBest) {
+    bestScore = score;
+    saveBest();
+  }
+  const bestHtml = `<p class="best">${isNewBest ? '🏆 최고 기록!' : `최고 점수 ${bestScore}`}</p>`;
   if (allClear) {
     cardEl.innerHTML = `
       <h1 class="win">모든 공정 완료!</h1>
       <p class="score">점수 ${score} · 실수 ${mistakes.length}회</p>
+      ${bestHtml}
       ${STAGES.map((s, i) => `<h3>STAGE ${i + 1} · ${s.title}</h3>${stepsNote(s)}`).join('')}
       <button type="button">다시 하기 (Enter)</button>`;
   } else {
@@ -143,6 +164,7 @@ function showResult() {
     cardEl.innerHTML = `
       <h1 class="lose">게임 오버</h1>
       <p class="score">점수 ${score}</p>
+      ${bestHtml}
       <h3>틀린 공정 복습</h3>
       <ul>${review}</ul>
       <h3>${stage.title} 올바른 순서</h3>
