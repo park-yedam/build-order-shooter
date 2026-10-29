@@ -177,7 +177,11 @@ function spawnBlock() {
   // 이미 끝낸 공정은 더 이상 떨어지지 않는다
   const remaining = STAGES[stageIndex].steps.slice(stepIndex);
   if (remaining.length === 0) return;
-  const step = remaining[Math.floor(Math.random() * remaining.length)];
+  // 화면에 정답 블록이 없으면 절반 확률로 정답 블록을 내보낸다
+  // (항상 정답을 내면 '새 블록 = 정답' 요령이 생기므로 확률로 둔다)
+  const next = remaining[0];
+  const noAnswerOnScreen = !blocks.some((k) => k.step === next);
+  const step = noAnswerOnScreen && Math.random() < 0.5 ? next : remaining[Math.floor(Math.random() * remaining.length)];
   ctx.font = BLOCK_FONT;
   const w = ctx.measureText(step.name).width + 24;
   const x = Math.random() * (W - w);
