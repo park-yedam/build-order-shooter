@@ -108,6 +108,11 @@ function startGame() {
   running = true;
 }
 
+// 마지막 글자의 받침 유무에 맞춰 '은/는'을 고른다
+function topicJosa(word) {
+  return (word.charCodeAt(word.length - 1) - 0xac00) % 28 > 0 ? '은' : '는';
+}
+
 function sequenceText(stage) {
   return stage.steps.map((s) => s.name).join(' → ');
 }
@@ -123,7 +128,7 @@ function showResult() {
   } else {
     const stage = STAGES[stageIndex];
     const review = mistakes
-      .map((m) => `<li>'${m.shot}'은(는) ${m.order}번째 공정 — 그때 필요한 공정은 '${m.needed}'</li>`)
+      .map((m) => `<li>'${m.shot}'${topicJosa(m.shot)} ${m.order}번째 공정 — 그때 필요한 공정은 '${m.needed}'</li>`)
       .join('');
     cardEl.innerHTML = `
       <h1 class="lose">게임 오버</h1>
@@ -250,7 +255,10 @@ function onHit(block) {
     helmets--;
     const order = steps.indexOf(block.step) + 1;
     mistakes.push({ shot: block.step.name, order, needed: next.name });
-    showMessage(`✖ 아직 '${next.name}' 공정이 끝나지 않았습니다! '${block.step.name}'은(는) ${order}번째 공정입니다.`, '#ff7b72');
+    // 힌트를 숨긴 스테이지에서는 정답 공정 이름을 알려주지 않고 순서 번호만 알려준다
+    const shot = block.step.name;
+    const nextText = STAGES[stageIndex].hint ? `${stepIndex + 1}번째 공정인 '${next.name}'` : `${stepIndex + 1}번째 공정`;
+    showMessage(`✖ 순서가 틀렸습니다! '${shot}'${topicJosa(shot)} ${order}번째 공정이고, 지금은 ${nextText} 차례입니다.`, '#ff7b72');
     if (helmets <= 0) {
       gameOver = true;
       setTimeout(showResult, RESULT_DELAY);
