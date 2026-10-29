@@ -36,9 +36,37 @@ let blocks = [];
 let spawnTimer = 0;
 let stageIndex = 0;
 
+// 진행 상태
+const FONT_FAMILY = '"Malgun Gothic", sans-serif';
+const START_HELMETS = 3;
+const MESSAGE_TIME = 2; // 팁·오류 메시지 표시 시간(초)
+let score = 0;
+let helmets = START_HELMETS;
+let stepIndex = 0; // 다음에 해야 할 공정 번호
+let gameOver = false;
+let message = null; // { text, color, time }
+
+function resetGame() {
+  score = 0;
+  helmets = START_HELMETS;
+  stageIndex = 0;
+  stepIndex = 0;
+  gameOver = false;
+  message = null;
+  blocks = [];
+  bullets = [];
+  spawnTimer = 0;
+}
+
+function showMessage(text, color) {
+  message = { text, color, time: MESSAGE_TIME };
+}
+
 function spawnBlock() {
-  const steps = STAGES[stageIndex].steps;
-  const step = steps[Math.floor(Math.random() * steps.length)];
+  // 이미 끝낸 공정은 더 이상 떨어지지 않는다
+  const remaining = STAGES[stageIndex].steps.slice(stepIndex);
+  if (remaining.length === 0) return;
+  const step = remaining[Math.floor(Math.random() * remaining.length)];
   ctx.font = BLOCK_FONT;
   const w = ctx.measureText(step.name).width + 24;
   const x = Math.random() * (W - w);
@@ -50,12 +78,38 @@ const keys = {};
 window.addEventListener('keydown', (e) => {
   keys[e.code] = true;
   if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+  if (e.code === 'Enter' && gameOver) resetGame();
 });
 window.addEventListener('keyup', (e) => {
   keys[e.code] = false;
 });
 
+// 블록을 맞혔을 때 공정 순서 판정
+function onHit(block) {
+  const steps = STAGES[stageIndex].steps;
+  const next = steps[stepIndex];
+  if (block.step === next) {
+    score += 100;
+    stepIndex++;
+    showMessage(`✔ ${next.name}: ${next.tip}`, '#7ee787');
+    // 끝낸 공정의 블록은 화면에서 치운다
+    blocks = blocks.filter((k) => k.step !== next);
+  } else {
+    helmets--;
+    const order = steps.indexOf(block.step) + 1;
+    showMessage(`✖ 아직 '${next.name}' 공정이 끝나지 않았습니다! '${block.step.name}'은(는) ${order}번째 공정입니다.`, '#ff7b72');
+    if (helmets <= 0) gameOver = true;
+  }
+}
+
 function update(dt) {
+  if (gameOver) return;
+
+  if (message) {
+    message.time -= dt;
+    if (message.time <= 0) message = null;
+  }
+
   // 좌우 이동
   let dir = 0;
   if (keys.ArrowLeft || keys.KeyA) dir -= 1;
@@ -85,10 +139,11 @@ function update(dt) {
 
   // 탄과 블록 충돌: 맞은 탄과 블록을 함께 제거
   for (const b of bullets) {
-    const hit = blocks.find((k) => b.x >= k.x && b.x <= k.x + k.w && b.y >= k.y && b.y <= k.y + k.h);
+    const hit = blocks.find((k) => !k.hit && b.x >= k.x && b.x <= k.x + k.w && b.y >= k.y && b.y <= k.y + k.h);
     if (hit) {
       b.hit = true;
       hit.hit = true;
+      onHit(hit);
     }
   }
   bullets = bullets.filter((b) => !b.hit);
@@ -137,6 +192,75 @@ function drawBullets() {
   for (const b of bullets) ctx.fillRect(b.x - 2, b.y - 8, 4, 12);
 }
 
+// 상단 정보: 점수, 헬멧, 스테이지, 다음 공정
+function drawHud() {
+  const steps = STAGES[stageIndex].steps;
+  ctx.fillStyle = 'rgba(17, 21, 28, 0.85)';
+  ctx.fillRect(0, 0, W, 66);
+  ctx.textBaseline = 'top';
+  ctx.font = `bold 18px ${FONT_FAMILY}`;
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'left';
+  ctx.fillText(`점수 ${score}`, 12, 12);
+  ctx.textAlign = 'center';
+  ctx.fillText(`헬멧 ${'⛑'.repeat(helmets)}`, W / 2, 12);
+  ctx.textAlign = 'right';
+  ctx.fillText(`STAGE ${stageIndex + 1}`, W - 12, 12);
+  if (stepIndex < steps.length) {
+    ctx.font = `16px ${FONT_FAMILY}`;
+    ctx.fillStyle = '#f2b705';
+    ctx.textAlign = 'center';
+    ctx.fillText(`다음 공정: ${steps[stepIndex].name} (${stepIndex + 1}/${steps.length})`, W / 2, 40);
+  }
+}
+
+// 글자 폭에 맞춰 단어 단위로 줄바꿈
+function wrapText(text, maxWidth) {
+  const lines = [];
+  let line = '';
+  for (const word of text.split(' ')) {
+    const test = line ? `${line} ${word}` : word;
+    if (line && ctx.measureText(test).width > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  }
+  lines.push(line);
+  return lines;
+}
+
+function drawMessage() {
+  if (!message) return;
+  ctx.font = `15px ${FONT_FAMILY}`;
+  const lines = wrapText(message.text, W - 64);
+  const lineH = 22;
+  const boxH = lines.length * lineH + 16;
+  const top = GROUND_Y - 110 - boxH;
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+  ctx.fillRect(20, top, W - 40, boxH);
+  ctx.fillStyle = message.color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  lines.forEach((l, i) => ctx.fillText(l, W / 2, top + 8 + i * lineH));
+}
+
+function drawGameOver() {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#ff7b72';
+  ctx.font = `bold 40px ${FONT_FAMILY}`;
+  ctx.fillText('게임 오버', W / 2, H / 2 - 60);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `20px ${FONT_FAMILY}`;
+  ctx.fillText(`점수 ${score}`, W / 2, H / 2 - 10);
+  ctx.font = `16px ${FONT_FAMILY}`;
+  ctx.fillText('Enter 키를 누르면 다시 시작', W / 2, H / 2 + 25);
+}
+
 let lastTime = performance.now();
 function loop(now) {
   const dt = Math.min((now - lastTime) / 1000, 0.05); // 탭 전환 등으로 큰 시간 간격 방지
@@ -146,6 +270,9 @@ function loop(now) {
   drawBlocks();
   drawBullets();
   drawPlayer();
+  drawHud();
+  if (gameOver) drawGameOver();
+  drawMessage();
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
