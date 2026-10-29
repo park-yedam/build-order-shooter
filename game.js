@@ -4,9 +4,11 @@ const ctx = canvas.getContext('2d');
 const W = canvas.width;
 const H = canvas.height;
 const GROUND_Y = H - 30; // 지면 높이
+const HUD_H = 66; // 상단 정보 영역 높이 (블록은 이 아래에서 나타난다)
 
 // 플레이어: 타워크레인 발사대
 const player = { x: W / 2, w: 56, h: 40, speed: 360 };
+const MUZZLE_Y = GROUND_Y - player.h - 30; // 탄이 나오는 높이(마스트 끝)
 const BULLET_SPEED = 600;
 const FIRE_INTERVAL = 0.25; // 연사 간격(초)
 let bullets = [];
@@ -179,7 +181,7 @@ function spawnBlock() {
   ctx.font = BLOCK_FONT;
   const w = ctx.measureText(step.name).width + 24;
   const x = Math.random() * (W - w);
-  blocks.push({ x, y: -BLOCK_H, w, h: BLOCK_H, step });
+  blocks.push({ x, y: HUD_H - BLOCK_H, w, h: BLOCK_H, step });
 }
 
 // 키 입력 상태
@@ -191,6 +193,11 @@ window.addEventListener('keydown', (e) => {
 });
 window.addEventListener('keyup', (e) => {
   keys[e.code] = false;
+});
+// 키를 누른 채 다른 창으로 전환하면 keyup이 오지 않으므로 입력을 모두 해제
+window.addEventListener('blur', () => {
+  for (const code in keys) keys[code] = false;
+  pointerDown = false;
 });
 
 // 터치·마우스: 누른 채 끌면 크레인이 따라오고 자동 발사
@@ -270,26 +277,30 @@ function update(dt) {
   // 발사
   fireCooldown -= dt;
   if ((keys.Space || pointerDown) && fireCooldown <= 0) {
-    bullets.push({ x: player.x, y: GROUND_Y - player.h - 30 });
+    bullets.push({ x: player.x, y: MUZZLE_Y });
     fireCooldown = FIRE_INTERVAL;
   }
 
-  // 탄 이동, 화면 밖 탄 제거
-  for (const b of bullets) b.y -= BULLET_SPEED * dt;
-  bullets = bullets.filter((b) => b.y > -10);
+  // 탄 이동, 상단 정보 영역에 닿은 탄 제거 (가려진 블록을 맞히지 않도록)
+  for (const b of bullets) {
+    b.prevY = b.y;
+    b.y -= BULLET_SPEED * dt;
+  }
+  bullets = bullets.filter((b) => b.y > HUD_H);
 
-  // 블록 생성과 낙하, 바닥에 닿은 블록 제거
+  // 블록 생성과 낙하, 크레인 높이까지 내려온 블록 제거 (그보다 낮으면 맞힐 수 없으므로)
   spawnTimer -= dt;
   if (spawnTimer <= 0) {
     spawnBlock();
     spawnTimer = SPAWN_INTERVAL;
   }
   for (const k of blocks) k.y += STAGES[stageIndex].speed * dt;
-  blocks = blocks.filter((k) => k.y + k.h < GROUND_Y);
+  blocks = blocks.filter((k) => k.y < MUZZLE_Y);
 
   // 탄과 블록 충돌: 맞은 탄과 블록을 함께 제거
+  // 이번 프레임에 탄이 지나간 구간 전체로 검사해, 블록을 뚫고 지나가거나 블록 안에서 생긴 탄이 빠져나가지 않게 한다
   for (const b of bullets) {
-    const hit = blocks.find((k) => !k.hit && b.x >= k.x && b.x <= k.x + k.w && b.y >= k.y && b.y <= k.y + k.h);
+    const hit = blocks.find((k) => !k.hit && b.x >= k.x && b.x <= k.x + k.w && b.y - 8 <= k.y + k.h && b.prevY + 4 >= k.y);
     if (hit) {
       b.hit = true;
       hit.hit = true;
@@ -347,7 +358,7 @@ function drawHud() {
   const stage = STAGES[stageIndex];
   const steps = stage.steps;
   ctx.fillStyle = 'rgba(17, 21, 28, 0.85)';
-  ctx.fillRect(0, 0, W, 66);
+  ctx.fillRect(0, 0, W, HUD_H);
   ctx.textBaseline = 'top';
   ctx.font = `bold 18px ${FONT_FAMILY}`;
   ctx.fillStyle = '#ffffff';
@@ -406,11 +417,11 @@ function loop(now) {
   lastTime = now;
   update(dt);
   drawBackground();
+  drawMessage(); // 메시지가 블록을 가리지 않도록 블록보다 먼저 그린다
   drawBlocks();
   drawBullets();
   drawPlayer();
   drawHud();
-  drawMessage();
   requestAnimationFrame(loop);
 }
 resetGame();
