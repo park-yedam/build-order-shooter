@@ -69,7 +69,8 @@ let stageIndex = 0;
 // 진행 상태
 const FONT_FAMILY = '"Malgun Gothic", sans-serif';
 const START_HELMETS = 3;
-const MESSAGE_TIME = 2; // 팁·오류 메시지 표시 시간(초)
+const MESSAGE_TIME = 2; // 오류·안내 메시지 표시 시간(초)
+const TIP_TIME = 3.5; // 정답 학습 팁은 끝까지 읽을 수 있게 더 오래 표시(초)
 const STAGE_CLEAR_TIME = 3; // 스테이지 클리어 후 다음 스테이지까지 대기(초)
 let score = 0;
 let helmets = START_HELMETS;
@@ -113,8 +114,9 @@ function topicJosa(word) {
   return (word.charCodeAt(word.length - 1) - 0xac00) % 28 > 0 ? '은' : '는';
 }
 
-function sequenceText(stage) {
-  return stage.steps.map((s) => s.name).join(' → ');
+// 결과 화면 복습 노트: 공정 순서와 학습 팁
+function stepsNote(stage) {
+  return `<ol class="note">${stage.steps.map((s) => `<li><b>${s.name}</b><span>${s.tip}</span></li>`).join('')}</ol>`;
 }
 
 function showResult() {
@@ -123,7 +125,7 @@ function showResult() {
     cardEl.innerHTML = `
       <h1 class="win">모든 공정 완료!</h1>
       <p class="score">점수 ${score} · 실수 ${mistakes.length}회</p>
-      ${STAGES.map((s, i) => `<h3>STAGE ${i + 1} · ${s.title}</h3><p>${sequenceText(s)}</p>`).join('')}
+      ${STAGES.map((s, i) => `<h3>STAGE ${i + 1} · ${s.title}</h3>${stepsNote(s)}`).join('')}
       <button type="button">다시 하기 (Enter)</button>`;
   } else {
     const stage = STAGES[stageIndex];
@@ -136,7 +138,7 @@ function showResult() {
       <h3>틀린 공정 복습</h3>
       <ul>${review}</ul>
       <h3>${stage.title} 올바른 순서</h3>
-      <p>${sequenceText(stage)}</p>
+      ${stepsNote(stage)}
       <button type="button">다시 하기 (Enter)</button>`;
   }
   overlayEl.hidden = false;
@@ -174,8 +176,8 @@ function renderBuilding() {
   });
 }
 
-function showMessage(text, color) {
-  message = { text, color, time: MESSAGE_TIME };
+function showMessage(text, color, time = MESSAGE_TIME) {
+  message = { text, color, time };
 }
 
 function spawnBlock() {
@@ -237,7 +239,7 @@ function onHit(block) {
   if (block.step === next) {
     score += 100;
     stepIndex++;
-    showMessage(`✔ ${next.name}: ${next.tip}`, '#7ee787');
+    showMessage(`✔ ${next.name}: ${next.tip}`, '#7ee787', TIP_TIME);
     // 끝낸 공정의 블록은 화면에서 치운다
     blocks = blocks.filter((k) => k.step !== next);
     renderBuilding();

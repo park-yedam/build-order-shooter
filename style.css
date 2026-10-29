@@ -118,6 +118,22 @@ html, body {
   margin: 12px 0;
 }
 
+/* 복습 노트: 공정 이름 아래에 학습 팁 */
+.card ol.note {
+  padding-left: 24px;
+  margin: 4px 0 8px;
+}
+
+.card ol.note li {
+  margin-bottom: 6px;
+}
+
+.card ol.note span {
+  display: block;
+  font-size: 14px;
+  color: #aab4c0;
+}
+
 .card .score {
   font-size: 20px;
   font-weight: bold;
@@ -136,6 +152,11 @@ html, body {
   border: none;
   border-radius: 6px;
   cursor: pointer;
+  /* 결과 화면 내용이 길어도 버튼은 카드 아래쪽에 항상 보이게 */
+  position: sticky;
+  bottom: 0;
+  /* 버튼 아래 여백으로 뒤의 글자가 비치지 않게 카드 배경색으로 가림 */
+  box-shadow: 0 24px 0 24px #1b2433;
 }
 
 /* 휴대폰(세로 화면): 건물 패널을 화면 위쪽 얇은 막대로 바꾼다 */
