@@ -13,9 +13,12 @@ let bullets = [];
 let fireCooldown = 0;
 
 // 스테이지 데이터: 공정 순서와 학습 팁
+// speed: 블록 낙하 속도(px/초), hint: 다음 공정 이름 표시 여부
 const STAGES = [
   {
     title: '건물 전체 공정',
+    speed: 70,
+    hint: true,
     steps: [
       { name: '측량', tip: '대지 경계와 건물 위치를 먼저 정확히 잡는다.' },
       { name: '터파기', tip: '기초가 들어갈 깊이까지 땅을 판다.' },
@@ -25,11 +28,36 @@ const STAGES = [
       { name: '마감', tip: '외벽·내장·설비 마감으로 건물을 완성한다.' },
     ],
   },
+  {
+    title: 'RC 기둥 시공',
+    speed: 95,
+    hint: false,
+    steps: [
+      { name: '먹매김', tip: '바닥에 기둥 위치를 먹줄로 표시한다.' },
+      { name: '철근 배근', tip: '설계도대로 주근과 띠철근을 조립한다.' },
+      { name: '거푸집 설치', tip: '콘크리트 모양을 잡아 줄 틀을 세운다.' },
+      { name: '콘크리트 타설', tip: '거푸집 안에 콘크리트를 부어 넣는다.' },
+      { name: '양생', tip: '콘크리트가 충분한 강도를 낼 때까지 습도·온도를 관리한다.' },
+      { name: '거푸집 해체', tip: '정해진 강도 확보 후 거푸집을 떼어 낸다.' },
+    ],
+  },
+  {
+    title: '경량 목구조 주택',
+    speed: 120,
+    hint: false,
+    steps: [
+      { name: '기초', tip: '목조도 콘크리트 기초 위에 짓는다.' },
+      { name: '토대', tip: '기초 위에 방부목 토대(씰 플레이트)를 고정한다.' },
+      { name: '바닥 장선', tip: '토대 위에 장선을 걸고 바닥 합판을 깐다.' },
+      { name: '벽체 프레임', tip: '스터드로 벽 틀을 짜서 세운다.' },
+      { name: '지붕 트러스', tip: '벽 위에 지붕 트러스(서까래)를 올린다.' },
+      { name: '외장 마감', tip: '외벽 시트·사이딩·지붕재로 마감한다.' },
+    ],
+  },
 ];
 
 // 떨어지는 공정 블록
 const BLOCK_H = 34;
-const BLOCK_SPEED = 70; // 낙하 속도(px/초)
 const SPAWN_INTERVAL = 1.2; // 생성 간격(초)
 const BLOCK_FONT = 'bold 16px "Malgun Gothic", sans-serif';
 let blocks = [];
@@ -40,10 +68,13 @@ let stageIndex = 0;
 const FONT_FAMILY = '"Malgun Gothic", sans-serif';
 const START_HELMETS = 3;
 const MESSAGE_TIME = 2; // 팁·오류 메시지 표시 시간(초)
+const STAGE_CLEAR_TIME = 3; // 스테이지 클리어 후 다음 스테이지까지 대기(초)
 let score = 0;
 let helmets = START_HELMETS;
 let stepIndex = 0; // 다음에 해야 할 공정 번호
 let gameOver = false;
+let allClear = false; // 모든 스테이지 완료
+let stageClearTimer = 0;
 let message = null; // { text, color, time }
 
 function resetGame() {
@@ -52,10 +83,41 @@ function resetGame() {
   stageIndex = 0;
   stepIndex = 0;
   gameOver = false;
+  allClear = false;
+  stageClearTimer = 0;
   message = null;
   blocks = [];
   bullets = [];
   spawnTimer = 0;
+  renderBuilding();
+}
+
+function nextStage() {
+  stageIndex++;
+  stepIndex = 0;
+  blocks = [];
+  spawnTimer = 0;
+  renderBuilding();
+  const stage = STAGES[stageIndex];
+  showMessage(`STAGE ${stageIndex + 1}: ${stage.title} 시작!${stage.hint ? '' : ' 이제 다음 공정 힌트가 없습니다.'}`, '#f2b705');
+}
+
+// 오른쪽 패널: 끝낸 공정을 아래부터 한 층씩 쌓아 보여준다
+const FLOOR_COLORS = ['#7a5c3e', '#8d6e4a', '#6b7a8f', '#4f7cac', '#3d8b6e', '#b5651d'];
+const stageTitleEl = document.getElementById('stage-title');
+const buildingEl = document.getElementById('building');
+
+function renderBuilding() {
+  const stage = STAGES[stageIndex];
+  stageTitleEl.textContent = `STAGE ${stageIndex + 1} · ${stage.title}`;
+  buildingEl.innerHTML = '';
+  stage.steps.slice(0, stepIndex).forEach((s, i) => {
+    const floor = document.createElement('div');
+    floor.className = 'floor';
+    floor.style.background = FLOOR_COLORS[i];
+    floor.textContent = `${i + 1}. ${s.name}`;
+    buildingEl.appendChild(floor);
+  });
 }
 
 function showMessage(text, color) {
@@ -78,7 +140,7 @@ const keys = {};
 window.addEventListener('keydown', (e) => {
   keys[e.code] = true;
   if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
-  if (e.code === 'Enter' && gameOver) resetGame();
+  if (e.code === 'Enter' && (gameOver || allClear)) resetGame();
 });
 window.addEventListener('keyup', (e) => {
   keys[e.code] = false;
@@ -94,6 +156,13 @@ function onHit(block) {
     showMessage(`✔ ${next.name}: ${next.tip}`, '#7ee787');
     // 끝낸 공정의 블록은 화면에서 치운다
     blocks = blocks.filter((k) => k.step !== next);
+    renderBuilding();
+    // 마지막 공정까지 끝내면 스테이지 클리어
+    if (stepIndex === steps.length) {
+      blocks = [];
+      if (stageIndex === STAGES.length - 1) allClear = true;
+      else stageClearTimer = STAGE_CLEAR_TIME;
+    }
   } else {
     helmets--;
     const order = steps.indexOf(block.step) + 1;
@@ -103,11 +172,16 @@ function onHit(block) {
 }
 
 function update(dt) {
-  if (gameOver) return;
+  if (gameOver || allClear) return;
 
   if (message) {
     message.time -= dt;
     if (message.time <= 0) message = null;
+  }
+
+  if (stageClearTimer > 0) {
+    stageClearTimer -= dt;
+    if (stageClearTimer <= 0) nextStage();
   }
 
   // 좌우 이동
@@ -134,7 +208,7 @@ function update(dt) {
     spawnBlock();
     spawnTimer = SPAWN_INTERVAL;
   }
-  for (const k of blocks) k.y += BLOCK_SPEED * dt;
+  for (const k of blocks) k.y += STAGES[stageIndex].speed * dt;
   blocks = blocks.filter((k) => k.y + k.h < GROUND_Y);
 
   // 탄과 블록 충돌: 맞은 탄과 블록을 함께 제거
@@ -194,7 +268,8 @@ function drawBullets() {
 
 // 상단 정보: 점수, 헬멧, 스테이지, 다음 공정
 function drawHud() {
-  const steps = STAGES[stageIndex].steps;
+  const stage = STAGES[stageIndex];
+  const steps = stage.steps;
   ctx.fillStyle = 'rgba(17, 21, 28, 0.85)';
   ctx.fillRect(0, 0, W, 66);
   ctx.textBaseline = 'top';
@@ -206,11 +281,14 @@ function drawHud() {
   ctx.fillText(`헬멧 ${'⛑'.repeat(helmets)}`, W / 2, 12);
   ctx.textAlign = 'right';
   ctx.fillText(`STAGE ${stageIndex + 1}`, W - 12, 12);
+  ctx.font = `16px ${FONT_FAMILY}`;
+  ctx.fillStyle = '#f2b705';
+  ctx.textAlign = 'center';
   if (stepIndex < steps.length) {
-    ctx.font = `16px ${FONT_FAMILY}`;
-    ctx.fillStyle = '#f2b705';
-    ctx.textAlign = 'center';
-    ctx.fillText(`다음 공정: ${steps[stepIndex].name} (${stepIndex + 1}/${steps.length})`, W / 2, 40);
+    const nextName = stage.hint ? steps[stepIndex].name : '???';
+    ctx.fillText(`다음 공정: ${nextName} (${stepIndex + 1}/${steps.length})`, W / 2, 40);
+  } else if (stageClearTimer > 0) {
+    ctx.fillText(`STAGE ${stageIndex + 1} 클리어! 곧 다음 스테이지`, W / 2, 40);
   }
 }
 
@@ -246,14 +324,14 @@ function drawMessage() {
   lines.forEach((l, i) => ctx.fillText(l, W / 2, top + 8 + i * lineH));
 }
 
-function drawGameOver() {
+function drawEndScreen(title, color) {
   ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
   ctx.fillRect(0, 0, W, H);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#ff7b72';
+  ctx.fillStyle = color;
   ctx.font = `bold 40px ${FONT_FAMILY}`;
-  ctx.fillText('게임 오버', W / 2, H / 2 - 60);
+  ctx.fillText(title, W / 2, H / 2 - 60);
   ctx.fillStyle = '#ffffff';
   ctx.font = `20px ${FONT_FAMILY}`;
   ctx.fillText(`점수 ${score}`, W / 2, H / 2 - 10);
@@ -271,8 +349,10 @@ function loop(now) {
   drawBullets();
   drawPlayer();
   drawHud();
-  if (gameOver) drawGameOver();
+  if (gameOver) drawEndScreen('게임 오버', '#ff7b72');
+  else if (allClear) drawEndScreen('모든 공정 완료!', '#7ee787');
   drawMessage();
   requestAnimationFrame(loop);
 }
+resetGame();
 requestAnimationFrame(loop);
