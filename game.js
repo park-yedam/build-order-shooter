@@ -12,6 +12,39 @@ const FIRE_INTERVAL = 0.25; // 연사 간격(초)
 let bullets = [];
 let fireCooldown = 0;
 
+// 스테이지 데이터: 공정 순서와 학습 팁
+const STAGES = [
+  {
+    title: '건물 전체 공정',
+    steps: [
+      { name: '측량', tip: '대지 경계와 건물 위치를 먼저 정확히 잡는다.' },
+      { name: '터파기', tip: '기초가 들어갈 깊이까지 땅을 판다.' },
+      { name: '기초', tip: '건물 하중을 지반에 전달하는 부분. 모든 구조의 시작점.' },
+      { name: '골조', tip: '기둥·보·슬래브 등 건물의 뼈대를 세운다.' },
+      { name: '지붕', tip: '골조가 완성된 후 비·눈을 막는 지붕을 덮는다.' },
+      { name: '마감', tip: '외벽·내장·설비 마감으로 건물을 완성한다.' },
+    ],
+  },
+];
+
+// 떨어지는 공정 블록
+const BLOCK_H = 34;
+const BLOCK_SPEED = 70; // 낙하 속도(px/초)
+const SPAWN_INTERVAL = 1.2; // 생성 간격(초)
+const BLOCK_FONT = 'bold 16px "Malgun Gothic", sans-serif';
+let blocks = [];
+let spawnTimer = 0;
+let stageIndex = 0;
+
+function spawnBlock() {
+  const steps = STAGES[stageIndex].steps;
+  const step = steps[Math.floor(Math.random() * steps.length)];
+  ctx.font = BLOCK_FONT;
+  const w = ctx.measureText(step.name).width + 24;
+  const x = Math.random() * (W - w);
+  blocks.push({ x, y: -BLOCK_H, w, h: BLOCK_H, step });
+}
+
 // 키 입력 상태
 const keys = {};
 window.addEventListener('keydown', (e) => {
@@ -40,6 +73,26 @@ function update(dt) {
   // 탄 이동, 화면 밖 탄 제거
   for (const b of bullets) b.y -= BULLET_SPEED * dt;
   bullets = bullets.filter((b) => b.y > -10);
+
+  // 블록 생성과 낙하, 바닥에 닿은 블록 제거
+  spawnTimer -= dt;
+  if (spawnTimer <= 0) {
+    spawnBlock();
+    spawnTimer = SPAWN_INTERVAL;
+  }
+  for (const k of blocks) k.y += BLOCK_SPEED * dt;
+  blocks = blocks.filter((k) => k.y + k.h < GROUND_Y);
+
+  // 탄과 블록 충돌: 맞은 탄과 블록을 함께 제거
+  for (const b of bullets) {
+    const hit = blocks.find((k) => b.x >= k.x && b.x <= k.x + k.w && b.y >= k.y && b.y <= k.y + k.h);
+    if (hit) {
+      b.hit = true;
+      hit.hit = true;
+    }
+  }
+  bullets = bullets.filter((b) => !b.hit);
+  blocks = blocks.filter((k) => !k.hit);
 }
 
 function drawBackground() {
@@ -64,6 +117,21 @@ function drawPlayer() {
   ctx.fillRect(x - 24, top - 30, 48, 5);
 }
 
+function drawBlocks() {
+  ctx.font = BLOCK_FONT;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const k of blocks) {
+    ctx.fillStyle = '#55606e';
+    ctx.fillRect(k.x, k.y, k.w, k.h);
+    ctx.strokeStyle = '#d0d6de';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(k.x, k.y, k.w, k.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(k.step.name, k.x + k.w / 2, k.y + k.h / 2 + 1);
+  }
+}
+
 function drawBullets() {
   ctx.fillStyle = '#c9d1d9';
   for (const b of bullets) ctx.fillRect(b.x - 2, b.y - 8, 4, 12);
@@ -75,6 +143,7 @@ function loop(now) {
   lastTime = now;
   update(dt);
   drawBackground();
+  drawBlocks();
   drawBullets();
   drawPlayer();
   requestAnimationFrame(loop);
